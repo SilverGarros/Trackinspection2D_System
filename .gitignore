@@ -1,0 +1,20 @@
+﻿################################################################################
+# 此 .gitignore 文件已由 Microsoft(R) Visual Studio 自动创建。
+################################################################################
+
+/.idea
+/Trackinspection2D_System/.vs/TrackInspection2D_System
+/Trackinspection2D_System/.vscode
+*.onnx
+/Trackinspection2D_System/x64
+*.sln
+*.vcxproj
+*.filters
+*.user
+/Trackinspection2D_System/Trackinspection2D_System/x64/Release
+/Trackinspection2D_System/Trackinspection2D_System/x64/Debug
+*.props
+/Trackinspection2D_System/old/TrackInspection2D_System_Dll/x64/Debug
+/Trackinspection2D_System/old/TrackInspection2D_System_Dll
+/Trackinspection2D_System/Inception_main_onnx/x64
+/Trackinspection2D_System/CppProperties.json

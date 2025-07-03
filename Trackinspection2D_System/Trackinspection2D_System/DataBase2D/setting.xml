@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <settings>
+        <setting
+                name="2DDataBasePath"
+                type="string"
+                value="C:\DataBase2D"/>
+        <setting
+                name="2DDataSetPath"
+                type="string"
+                value="C:\Users\SilverGarros\Desktop\2DImages\2DImages"/>
+        <setting
+                name="2DWeightPath"
+                type="string"
+                value="C:\DataBase2D\weights"/>
+        <setting
+                name="PythonPath"
+                type="string"
+                value="C:\Trackinspection2D_PySystem\env"/>
+        <setting
+                nmae="TARGET_EXE"
+                type="string"
+                value="Inception_main_onnx.exe"
+        />
+        <setting
+                name= "TARGET_EXE_PATH"
+                type="string"
+                value="D:\\LuHang_System\\Trackinspection2D_System\\x64\\Debug\\Inception_main.exe"
+                />
+        <setting
+                name= "ClassificationModel"
+                type="string"
+                value="C1_LhT_001.onnx"
+                />
+        <setting
+                name= "DetectionModel"
+                type="string"
+                value="D1_LhT_001.onnx"
+                />
+        <setting
+                name= "mark_over_or_not"
+                type="bool"
+                value="false"
+                />
+        <setting
+                name= "CROP_WIDE"
+                type= "int"
+                value= "660"
+                />
+        <setting
+                name= "CROP_THRESHOLD"
+                type= "int"
+                value= "100"
+                />
+        <settings
+                name= "center_limit"
+                type= "bool"
+                value= "true">
+        <settings
+                name= "limit_area"
+                type= "int"
+                value= "250">
+</configuration>

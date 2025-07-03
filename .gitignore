@@ -18,3 +18,15 @@
 /Trackinspection2D_System/old/TrackInspection2D_System_Dll
 /Trackinspection2D_System/Inception_main_onnx/x64
 /Trackinspection2D_System/CppProperties.json
+/.vs
+/FunctionDLL/.vs/FunctionDLL
+/FunctionDLL/DLL_Test/x64/Debug
+/FunctionDLL/FunctionDLL/x64/Debug/FunctionDLL.tlog
+/FunctionDLL/FunctionDLL/x64/Debug
+/FunctionDLL/x64/Debug
+/old
+*.zip
+/Trackinspection2D_System/.vs/CopilotSnapshots/339F11ABC761574485B1B5CFF1E5B1F6
+/Trackinspection2D_System/3rdpackages
+/Trackinspection2D_System/InceptionDLL/x64
+/Trackinspection2D_System/InceptionUtils/x64

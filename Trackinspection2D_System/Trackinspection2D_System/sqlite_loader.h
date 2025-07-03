@@ -26,6 +26,9 @@ typedef int (*sqlite3_reset_t)(sqlite3_stmt*);
 typedef int (*sqlite3_clear_bindings_t)(sqlite3_stmt*);
 typedef const char* (*sqlite3_errmsg_t)(sqlite3*);
 typedef void (*sqlite3_free_t)(void*);
+typedef int (*sqlite3_bind_null_t)(sqlite3_stmt*, int);
+typedef int (*sqlite3_bind_double_t)(sqlite3_stmt*, int, double);
+
 
 // SQLite APIº”‘ÿ∆˜¿‡
 class SQLiteLoader {
@@ -47,6 +50,9 @@ public:
             sqlite3_clear_bindings_fn = (sqlite3_clear_bindings_t)GetProcAddress(hModule, "sqlite3_clear_bindings");
             sqlite3_errmsg_fn = (sqlite3_errmsg_t)GetProcAddress(hModule, "sqlite3_errmsg");
             sqlite3_free_fn = (sqlite3_free_t)GetProcAddress(hModule, "sqlite3_free");
+            sqlite3_bind_null_fn = (sqlite3_bind_null_t)GetProcAddress(hModule, "sqlite3_bind_null");
+            sqlite3_bind_double_fn = (sqlite3_bind_double_t)GetProcAddress(hModule, "sqlite3_bind_double");
+
         }
     }
 
@@ -72,6 +78,8 @@ public:
     sqlite3_clear_bindings_t sqlite3_clear_bindings_fn = nullptr;
     sqlite3_errmsg_t sqlite3_errmsg_fn = nullptr;
     sqlite3_free_t sqlite3_free_fn = nullptr;
+    sqlite3_bind_null_t sqlite3_bind_null_fn = nullptr;
+    sqlite3_bind_double_t sqlite3_bind_double_fn = nullptr;
 
 private:
     HMODULE hModule = NULL;

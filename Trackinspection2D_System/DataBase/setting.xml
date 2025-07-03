@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <settings>
+        <setting
+                name="2DDataSetPath"
+                type="string"
+                value="I:\2DImage"/>
+        <setting
+                name="2DDataBasePath"
+                type="string"
+                value="C:\DataBase_2D"/>
+        <setting
+                name="2DWeight"
+                type="string"
+                value="D:\DataBase_2D\weights"/>
+        <setting
+                name="PythonPath"
+                type="string"
+                value="D:\Trackinspection2D_PySystem\env"/>
+        <setting
+                nmae=""
+        />
+
+    </settings>
+</configuration>

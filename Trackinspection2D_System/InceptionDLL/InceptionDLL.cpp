@@ -186,13 +186,22 @@ namespace InceptionDLL {
             auto output_tensors = session.Run(Ort::RunOptions{ nullptr }, input_names, &input_tensor, 1, output_names, 1);
             const float* output_data = output_tensors[0].GetTensorData<float>();
             size_t output_count = output_tensors[0].GetTensorTypeAndShapeInfo().GetElementCount();
-            int max_index = 0;
-            float max_value = output_data[0];
-            for (size_t i = 1; i < output_count; ++i) {
+            int max_index = 5;
+            float max_value = output_data[5];
+            for (size_t i = 0; i < output_count; i++) {
+                // 剔除 i=2BM i=3 HF 和 i=7 GD 的影响
+                if (i==2 || i == 3 || i == 7) {
+                    continue;
+                }
                 if (output_data[i] > max_value) {
                     max_value = output_data[i];
                     max_index = static_cast<int>(i);
                 }
+            }
+            // 添加置信度过滤逻辑
+            float confidence_threshold = 0.7; // 根据实际情况调整
+            if (max_value < confidence_threshold) {
+                return "ZC"; // 或其他默认类别
             }
             auto it = InceptionDLL::classes_lable_map.find(max_index);
             return (it != InceptionDLL::classes_lable_map.end()) ? it->second : "111 Unknown";
@@ -432,13 +441,13 @@ INCEPTIONDLL_API std::vector<DetectionResult> YOLO12Infer::postprocess(const std
     std::vector<int> class_ids;
     std::vector<DetectionResult> results;
 
-    if (TestModel_Flag) {
-        std::cout << "CLASS_NAMES数量: " << InceptionDLL::CLASS_NAMES.size() << std::endl;
-        std::cout << "模型输出的形状：rows=" << rows << ", cols=" << cols << std::endl;
-        std::cout << "输入图像尺寸：" << input_image_size_.width << "x" << input_image_size_.height << std::endl;
-        std::cout << "原始图像尺寸: " << original_img.cols << "x" << original_img.rows << std::endl;
-        std::cout << "缩放比例 w_ratio: " << w_ratio << ", h_ratio: " << h_ratio << std::endl;
-    }
+    //if (TestModel_Flag) {
+    //    std::cout << "CLASS_NAMES数量: " << InceptionDLL::CLASS_NAMES.size() << std::endl;
+    //    std::cout << "模型输出的形状：rows=" << rows << ", cols=" << cols << std::endl;
+    //    std::cout << "输入图像尺寸：" << input_image_size_.width << "x" << input_image_size_.height << std::endl;
+    //    std::cout << "原始图像尺寸: " << original_img.cols << "x" << original_img.rows << std::endl;
+    //    std::cout << "缩放比例 w_ratio: " << w_ratio << ", h_ratio: " << h_ratio << std::endl;
+    //}
 
     // 遍历每一行，每一行代表一个检测框
     for (int i = 0; i < rows; ++i) {
@@ -529,14 +538,11 @@ INCEPTIONDLL_API std::vector<DetectionResult> YOLO12Infer::postprocess(const std
             std::cout << "class_name:" << res.class_name << std::endl;
             std::cout << "bbox:" << res.bbox << std::endl;
         }
-
-
         // DK类处理
         if (res.class_name.find("DK") != std::string::npos) {
             if (TestModel_Flag) {
                 std::cout << "执行掉块类处理....." << std::endl;
             }
-
 
             // 裁剪检测区域
             int x1 = std::max(res.bbox.x, 0);
@@ -586,11 +592,6 @@ INCEPTIONDLL_API std::vector<DetectionResult> YOLO12Infer::postprocess(const std
             res.area_contour = static_cast<float>(area_contour);
         }
 
-        if (TestModel_Flag) {
-            std::cout << "class_name:" << res.class_name << std::endl;
-            std::cout << "bbox:" << res.bbox << std::endl;
-        }
-
         results.push_back(res);
     }
     return results;
@@ -622,13 +623,13 @@ INCEPTIONDLL_API std::vector<DetectionResult> YOLO12Infer::infer(const std::stri
     std::vector<int64_t> output_shape = type_info.GetShape();
 
     // 打印原始输出形状
-    if (TestModel_Flag) {
-        std::cout << "原始模型输出形状: [";
-        for (size_t i = 0; i < output_shape.size(); ++i) {
-            std::cout << output_shape[i] << (i < output_shape.size() - 1 ? ", " : "");
-        }
-        std::cout << "]" << std::endl;
-    }
+    //if (TestModel_Flag) {
+    //    std::cout << "原始模型输出形状: [";
+    //    for (size_t i = 0; i < output_shape.size(); ++i) {
+    //        std::cout << output_shape[i] << (i < output_shape.size() - 1 ? ", " : "");
+    //    }
+    //    std::cout << "]" << std::endl;
+    //}
 
     // 假设原始输出是[1, 10, 5376]或[1, 10, 5376, 1]，需要转置为[5376, 10]
     int orig_rows = static_cast<int>(output_shape[1]);  // 10
@@ -642,20 +643,20 @@ INCEPTIONDLL_API std::vector<DetectionResult> YOLO12Infer::infer(const std::stri
         }
     }
     // 打印转置后形状
-    if (TestModel_Flag) {
-        std::cout << "转置后模型输出形状: [" << orig_cols << ", " << orig_rows << "]" << std::endl;
+    //if (TestModel_Flag) {
+    //    std::cout << "转置后模型输出形状: [" << orig_cols << ", " << orig_rows << "]" << std::endl;
 
-        // 打印前几行，用于与Python对比
-        std::cout << "转置后的前3行数据：" << std::endl;
-        for (int i = 0; i < std::min(3, orig_cols); ++i) {
-            std::cout << "[";
-            for (int j = 0; j < orig_rows; ++j) {
-                std::cout << transposed_output[i * orig_rows + j];
-                if (j < orig_rows - 1) std::cout << ", ";
-            }
-            std::cout << "]" << std::endl;
-        }
-    }
+    //    // 打印前几行，用于与Python对比
+    //    std::cout << "转置后的前3行数据：" << std::endl;
+    //    for (int i = 0; i < std::min(3, orig_cols); ++i) {
+    //        std::cout << "[";
+    //        for (int j = 0; j < orig_rows; ++j) {
+    //            std::cout << transposed_output[i * orig_rows + j];
+    //            if (j < orig_rows - 1) std::cout << ", ";
+    //        }
+    //        std::cout << "]" << std::endl;
+    //    }
+    //}
 
     return postprocess(transposed_output, orig_cols, orig_rows, h_ratio, w_ratio, original_img);
 }
@@ -690,7 +691,7 @@ INCEPTIONDLL_API std::string YOLO12Infer::predict(const std::string& image_path,
     std::vector<DetectionResult> results = infer(image_path);
     cv::Mat img = InceptionUtils::imread_unicode(image_path, cv::IMREAD_COLOR);
     if (results.empty()) {
-        return "['class_name': 'ZC']";
+        return R"([{"class_name": "ZC"}])";
     }
     for (const auto& res : results) {
         draw_box(img, res, show_score, show_class);

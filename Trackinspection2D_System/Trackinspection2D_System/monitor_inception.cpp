@@ -17,7 +17,24 @@ namespace fs = std::filesystem;
 string SETTING_PATH = "C:\\DataBase2D\\setting.xml";
 
 
+// 检查当前时间是否在允许的时间范围内
+bool is_within_allowed_time() {
+    time_t now = time(nullptr);
+    tm localTime;
+    localtime_s(&localTime, &now);
 
+    int hour = localTime.tm_hour;
+    int minute = localTime.tm_min;
+
+    // 9:00-17:30 和 20:30-5:00 的时间段
+    if ((hour > 9 || (hour == 9 && minute >= 0)) && (hour < 17 || (hour == 17 && minute <= 30))) {
+        return true;
+    }
+    if ((hour > 20 || (hour == 20 && minute >= 30)) || (hour < 5 || (hour == 5 && minute <= 0))) {
+        return true;
+    }
+    return false;
+}
 // 从setting.xml文件获取可执行文件路径
 std::wstring get_exe_path_from_settings() {
     const std::wstring DEFAULT_PATH = L"C:\\LuHang_System\\Trackinspection2D_System\\Inception_main.exe";
@@ -114,7 +131,7 @@ int main() {
         std::wcerr << L"错误：无法设置输出模式为宽字符。" << std::endl;
     }
 
-    const std::wstring TARGET_EXE = L"Inception_main_onnx.exe";
+    const std::wstring TARGET_EXE = L"Inception_main.exe";
     const std::wstring TARGET_PATH = get_exe_path_from_settings();
 
 
@@ -127,16 +144,18 @@ int main() {
     std::wcout << L"2D 检测程式监视进程启动中" << std::endl;
     std::wcout << L"2D Detecting Processes Monitoring Processes Being Started..." << std::endl;
     while (true) {
-        if (!is_process_running(TARGET_EXE)) {
-            std::wcout << L"未检测到 " << TARGET_EXE << L" 进程，正在启动中..." << std::endl;
-            std::wcout << L"Process " << TARGET_EXE << L" not detected, starting..." << std::endl;
-            start_process(TARGET_PATH);
+        if (is_within_allowed_time()) {
+            if (!is_process_running(TARGET_EXE)) {
+                std::wcout << L"未检测到 " << TARGET_EXE << L" 进程，正在启动中..." << std::endl;
+                std::wcout << L"Process " << TARGET_EXE << L" not detected, starting..." << std::endl;
+                start_process(TARGET_PATH);
+            }
+            else {
+                std::wcout << TARGET_EXE << L" 正在运行中。\r" << std::endl;
+                std::wcout << TARGET_EXE << L" is running.\r" << std::endl;
+            }
+            std::this_thread::sleep_for(std::chrono::minutes(1));
         }
-        else {
-            std::wcout << TARGET_EXE << L" 正在运行中。" << std::endl;
-            std::wcout << TARGET_EXE << L" is running." << std::endl;
-        }
-        std::this_thread::sleep_for(std::chrono::minutes(1));
     }
     return 0;
 }

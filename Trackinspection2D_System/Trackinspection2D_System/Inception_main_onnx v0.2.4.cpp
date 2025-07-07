@@ -87,6 +87,8 @@ void process_single_image(
                 cout << "返回的结果是：" << result;
             }
         }
+        // 统计处理的图像片段数
+        total_pieces_processed++;
         // 解析result字符串为json
         try {
             nlohmann::json j;
@@ -108,6 +110,8 @@ void process_single_image(
 
                 // 跳过ZC
                 if (item.contains("class_name") && item["class_name"] == "ZC") continue;
+                // 跳过YC
+                if (item.contains("class_name") && item["class_name"] == "YC") continue;
                 DefectResult dr;
                 dr.DefectType = item.value("class_name", "");
                 dr.Camera = camera_side;
@@ -131,15 +135,15 @@ void process_single_image(
         }
         catch (const std::exception& e) {
             // 解析失败，写入最基本信息
-            DefectResult dr;
-            dr.DefectType = pred_label;
-            dr.Camera = camera_side;
-            dr.ImageName = fs::path(out_path).filename().string();
-            std::lock_guard<std::mutex> lock(results_mutex);
-            results.push_back(dr);
+            //DefectResult dr;
+            //dr.DefectType = pred_label;
+            //dr.Camera = camera_side;
+            //dr.ImageName = fs::path(out_path).filename().string();
+            //std::lock_guard<std::mutex> lock(results_mutex);
+            //results.push_back(dr);
+            continue;
         }
-        // 统计处理的图像片段数
-        total_pieces_processed++;
+
     }
 }
 std::string GbkToUtf8(const std::string& gbkStr) {
@@ -357,7 +361,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         std::vector<std::string> Inspction_folder;
-        std::regex folder_regex(R"(((WP|WN)\d|Fake)+_\d{4}Y\d{2}M\d{2}D\d{2}h\d{2}m\d{2}s)"); 
+        std::regex folder_regex(R"(((WP|WN)\d+|Fake)+_\d{4}Y\d{2}M\d{2}D\d{2}h\d{2}m\d{2}s)"); 
         for (const auto& entry : fs::directory_iterator(img2D_path)) {
             if (entry.is_directory()) {
                 std::string folder_name = entry.path().filename().string();
@@ -484,6 +488,10 @@ int main(int argc, char* argv[]) {
             }
             std::cout << "总耗时: " << format_duration(folder_duration) << std::endl;
             std::cout << "结果保存路径: " << folder << R"(\result.db)" << std::endl;
+            if (mark_over_or_not) {
+                InceptionUtils::mark_folder_over(folder);
+            }
+            
         }
 
         std::lock_guard<std::mutex> lock(cout_mutex);

@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Inception Detection Service</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 40px;
+        }
+
+        .container {
+            max-width: 800px;
+        }
+
+        .endpoint {
+            background: #f5f5f5;
+            padding: 15px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+
+        .method {
+            color: #007bff;
+            font-weight: bold;
+        }
+
+        pre {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 3px;
+            overflow-x: auto;
+        }
+
+        .workflow {
+            background: #e8f4fd;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #007bff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Inception Image Detection Service</h1>
+        <p>基于TensorRT加速的二阶段图像检测Web服务</p>
+
+        <div class="workflow">
+            <h3>检测流程</h3>
+            <ol>
+                <li><strong>分类阶段</strong>：使用TensorRT加速的分类模型进行图像分类</li>
+                <li><strong>检测阶段</strong>：对DK、CS、GF类别，使用TensorRT加速的检测模型进行目标检测</li>
+                <li><strong>后处理</strong>：对DK类别进行轮廓分析和面积计算</li>
+            </ol>
+        </div>
+
+        <h2>API接口</h2>
+
+        <div class="endpoint">
+            <h3><span class="method">POST</span> /detect</h3>
+            <p>提交图像检测任务</p>
+            <p><strong>请求体:</strong></p>
+            <pre>{"image_path": "/path/to/image.jpg"}</pre>
+            <p><strong>响应:</strong></p>
+            <pre>{"status": "accepted", "task_id": "task_xxx", "result_url": "/result/task_xxx"}</pre>
+        </div>
+
+        <div class="endpoint">
+            <h3><span class="method">GET</span> /result/{task_id}</h3>
+            <p>查询检测任务结果</p>
+            <p><strong>响应 (处理中):</strong></p>
+            <pre>{"status": "processing", "task_id": "task_xxx"}</pre>
+            <p><strong>响应 (完成):</strong></p>
+            <pre>{"status": "completed", "task_id": "task_xxx", "result": {...}}</pre>
+        </div>
+
+        <div class="endpoint">
+            <h3><span class="method">GET</span> /status</h3>
+            <p>查询服务状态</p>
+            <p><strong>响应:</strong></p>
+            <pre>{"service": "Inception Image Detection Service (TensorRT)", "status": "running", "queue_size": 0}</pre>
+        </div>
+
+        <h2>使用示例</h2>
+        <pre>
+# 提交检测任务
+curl -X POST http://localhost:2003/detect \
+  -H "Content-Type: application/json" \
+  -d '{"image_path": "/path/to/image.jpg"}'
+
+# 查询结果
+curl http://localhost:2003/result/{task_id}
+
+# 查询服务状态
+curl http://localhost:2003/status
+        </pre>
+    </div>
+</body>
+</html>

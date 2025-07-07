@@ -6,7 +6,7 @@
 #include <map>
 #include <set>
 #include <fstream>
-#include <mutex>
+#include <mutex> 
 #include <chrono>
 #include <algorithm>
 #include <opencv2/opencv.hpp>
@@ -29,7 +29,8 @@ namespace fs = std::filesystem;
 SQLiteLoader g_sqliteLoader;
 // 常量定义
 #define IMG_SIZE 256
-#define MAX_THREADS 16
+#define MAX_THREADS 8
+std::mutex cout_mutex;
 
 bool TestModel = false;
 
@@ -97,6 +98,14 @@ void process_single_image(
                 j = nlohmann::json::array({ nlohmann::json::parse(result) });
             }
             for (const auto& item : j) {
+
+                if (TestModel == true) {
+                    if (item.contains("class_name") && item["class_name"] == "ZC") {
+                        std::cout << "Skipping item with class_name ZC" << std::endl;
+                        continue;
+                    }
+                }
+
                 // 跳过ZC
                 if (item.contains("class_name") && item["class_name"] == "ZC") continue;
                 DefectResult dr;
@@ -213,9 +222,16 @@ void merge_results_to_db(
     sqlite3_stmt* stmt;
     rc = g_sqliteLoader.sqlite3_prepare_v2_fn(db, insert_sql, -1, &stmt, nullptr);
     for (const auto& dr : results) {
+
+
         // DefectType
-        if (!dr.DefectType.empty())
+        if (!dr.DefectType.empty()) {
+            if (dr.DefectType == "ZC") {
+                // 跳过 DefectType 为 "ZC" 的结果
+                continue;
+            }
             g_sqliteLoader.sqlite3_bind_text_fn(stmt, 1, dr.DefectType.c_str(), -1, SQLITE_TRANSIENT);
+        }
         else
             g_sqliteLoader.sqlite3_bind_null_fn(stmt, 1);
         // Camera
@@ -328,10 +344,11 @@ int main(int argc, char* argv[]) {
         
 #ifdef _WIN32
         OrtStatus* status = OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0);
-#endif
+#endif  
+        std::cout << "加载检测模型..." << std::endl;
         Ort::Session session(env, wmodel_path.c_str(), session_options);
         std::cout << "加载模型完成" << std::endl;
-        std::cout << "加载检测模型..." << std::endl;
+
         YOLO12Infer detector(detect_model_path, cv::Size(512, 512), 0.8f, 0.45f);
 
         // 路径校验
@@ -340,7 +357,7 @@ int main(int argc, char* argv[]) {
             return 0;
         }
         std::vector<std::string> Inspction_folder;
-        std::regex folder_regex(R"(WP\d+_\d{4}Y\d{2}M\d{2}D\d{2}h\d{2}m\d{2}s)");
+        std::regex folder_regex(R"(((WP|WN)\d|Fake)+_\d{4}Y\d{2}M\d{2}D\d{2}h\d{2}m\d{2}s)"); 
         for (const auto& entry : fs::directory_iterator(img2D_path)) {
             if (entry.is_directory()) {
                 std::string folder_name = entry.path().filename().string();
@@ -350,18 +367,19 @@ int main(int argc, char* argv[]) {
             }
         }
         for (const auto& folder : Inspction_folder) {
-            std::cout << "开始处理文件夹: " << folder << std::endl;
+            std::cout << "\r\n开始处理线路: " << folder << std::endl;
             if (!fs::is_directory(folder)) continue;
             if (InceptionUtils::is_over_file_exist(folder)) {
-                std::cout << folder << " 已检测，跳过。" << std::endl;
+                // std::cout << folder << " 已检测，跳过。" << std::endl;
                 continue;
             }
 
-            // 添加文件夹处理的开始时间
+            // 添加线路处理的开始时间
             auto folder_start_time = std::chrono::high_resolution_clock::now();
             int total_images_processed = 0;  // 跟踪处理的图像总数
             int total_pieces_processed = 0;  // 跟踪处理的图像片段总数
 
+            std::vector<DefectResult> results;
             for (const auto& cam : { "左相机", "右相机" }) {
                 std::string cam_side = (std::string(cam) == "左相机") ? "L" : "R";
                 std::string cam_folder = folder + "//" + cam;
@@ -381,13 +399,14 @@ int main(int argc, char* argv[]) {
                         }
                     }
                     if (image_files.empty()) {
-                        std::cout << "未检测到"<< cam <<"图像数据，检查" << cam << "是否异常。" << std::endl;
+                        std::cout << "\r\n未检测到" << cam << "图像数据，检查" << cam << "是否异常。" << std::endl;
                         continue;
                     }
 
-                    std::vector<DefectResult> results;
+
                     std::mutex results_mutex;
                     int idx = 0, total = static_cast<int>(image_files.size());
+                    std::atomic<int> finished_count{ 0 };
 
                     // 添加相机处理的开始时间
                     auto cam_start_time = std::chrono::high_resolution_clock::now();
@@ -395,16 +414,6 @@ int main(int argc, char* argv[]) {
                     // 设置多线程
                     std::vector<std::thread> threads;
                     const size_t max_threads = MAX_THREADS;
-                    std::atomic<int> finished_count{0};
-
-                    bool running = true;
-                    std::thread progress_thread([&]() {
-                        while (running) {
-                            int percent = finished_count * 100 / total;
-                            std::cout << "\r[" << cam_folder << "] 顺序处理进度: " << percent << "% (" << finished_count << "/" << total << ")" << std::flush;
-                            std::this_thread::sleep_for(std::chrono::milliseconds(200));
-                        }
-                        });
 
                     // 启动工作线程
                     for (const auto& img_path : image_files) {
@@ -429,6 +438,11 @@ int main(int argc, char* argv[]) {
                             );
                             finished_count++;
                             total_images_processed++;
+                            {
+                                std::lock_guard<std::mutex> lock(cout_mutex);
+                                int percent = finished_count * 100 / total;
+                                std::cout << "\r[" << cam_folder << "] 顺序处理进度: " << percent << "% (" << finished_count << "/" << total << ")" << std::flush;
+                            }
                             });
 
                         if (threads.size() >= max_threads) {
@@ -436,42 +450,46 @@ int main(int argc, char* argv[]) {
                             threads.clear();
                         }
                     }
+                    std::mutex cout_mutex; // 全局互斥锁
                     for (auto& t : threads) t.join();
-
                     // 停止进度显示线程
                     std::cout << "\r[" << cam_folder << "] 顺序处理进度: " << 100 << "% (" << finished_count << "/" << total << ")" << std::flush;
-                    running = false;
-                    progress_thread.join();
                     std::cout << std::endl;
-
 
                     // 计算相机处理时间
                     auto cam_end_time = std::chrono::high_resolution_clock::now();
                     auto cam_duration = std::chrono::duration_cast<std::chrono::seconds>(cam_end_time - cam_start_time);
 
+                    {
+                        std::lock_guard<std::mutex> lock(cout_mutex);
+                        std::cout << "处理 " << cam << " 图像 " << total << " 张，耗时 "
+                            << format_duration(cam_duration) << std::endl;
+                    }
+
                     // 合并结果到数据库
                     merge_results_to_db(results, folder, cam_side);
-
-                    std::cout << "处理 " << cam << " 图像 " << total << " 张，耗时 "
-                        << format_duration(cam_duration) << std::endl;
-
-                }
-
-                // 计算整个文件夹处理的总时间
-                auto folder_end_time = std::chrono::high_resolution_clock::now();
-                auto folder_duration = std::chrono::duration_cast<std::chrono::seconds>(folder_end_time - folder_start_time);
-
-                std::cout << folder << "共处理原始图像 " << total_images_processed << " 张，拉伸后处理片段 "
-                    << total_pieces_processed << " 张，总耗时 " << format_duration(folder_duration)
-                    << "\r预测结果已合并并保存到: " << folder << R"(\result.db)" << "\r" << std::endl;
-
-                // 进行over标记
-                if (mark_over_or_not) {
-                    InceptionUtils::mark_folder_over(folder);
                 }
             }
-            return 0;
+            // 计算整个线路处理的总时间
+            auto folder_end_time = std::chrono::high_resolution_clock::now();
+            auto folder_duration = std::chrono::duration_cast<std::chrono::seconds>(folder_end_time - folder_start_time);
+
+            std::lock_guard<std::mutex> lock(cout_mutex);
+            std::cout << "\r\n线路: " << folder << "处理完毕" << std::endl;
+            if (total_images_processed > 0) {
+                std::cout << "原始图像总数: " << total_images_processed << " 张" << std::endl;
+            }
+            if (total_pieces_processed > 0) {
+                std::cout << "拉伸后处理片段总数: " << total_pieces_processed << " 张" << std::endl;
+            }
+            std::cout << "总耗时: " << format_duration(folder_duration) << std::endl;
+            std::cout << "结果保存路径: " << folder << R"(\result.db)" << std::endl;
         }
+
+        std::lock_guard<std::mutex> lock(cout_mutex);
+        std::cout << "\r\n当前所有线路检查完成，异常检测进程待机中..." << std::endl;
+        std::cout << "All current line anomaly detection are completed, the program is on standby..." << std::endl;
+        return 0;
     }
     catch (const std::exception& e) {
         std::cerr << "程序异常终止: " << e.what() << std::endl;

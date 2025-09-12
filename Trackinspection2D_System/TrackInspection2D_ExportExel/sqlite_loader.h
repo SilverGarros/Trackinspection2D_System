@@ -23,6 +23,7 @@ typedef int (*sqlite3_bind_text_t)(sqlite3_stmt*, int, const char*, int, void(*)
 typedef const unsigned char* (*sqlite3_column_text_t)(sqlite3_stmt*, int);
 typedef int (*sqlite3_column_int_t)(sqlite3_stmt*, int);
 typedef int (*sqlite3_column_type_t)(sqlite3_stmt*, int);
+typedef double (*sqlite3_column_double_t)(sqlite3_stmt*, int);
 typedef int (*sqlite3_reset_t)(sqlite3_stmt*);
 typedef int (*sqlite3_clear_bindings_t)(sqlite3_stmt*);
 typedef const char* (*sqlite3_errmsg_t)(sqlite3*);
@@ -48,6 +49,7 @@ public:
             sqlite3_column_text_fn = (sqlite3_column_text_t)GetProcAddress(hModule, "sqlite3_column_text");
             sqlite3_column_int_fn = (sqlite3_column_int_t)GetProcAddress(hModule, "sqlite3_column_int");
             sqlite3_column_type_fn = (sqlite3_column_type_t)GetProcAddress(hModule, "sqlite3_column_type");
+            sqlite3_column_double_fn = (sqlite3_column_double_t)GetProcAddress(hModule, "sqlite3_column_double");
             sqlite3_reset_fn = (sqlite3_reset_t)GetProcAddress(hModule, "sqlite3_reset");
             sqlite3_clear_bindings_fn = (sqlite3_clear_bindings_t)GetProcAddress(hModule, "sqlite3_clear_bindings");
             sqlite3_errmsg_fn = (sqlite3_errmsg_t)GetProcAddress(hModule, "sqlite3_errmsg");
@@ -77,6 +79,7 @@ public:
     sqlite3_column_text_t sqlite3_column_text_fn = nullptr;
     sqlite3_column_int_t sqlite3_column_int_fn = nullptr;
     sqlite3_column_type_t sqlite3_column_type_fn = nullptr;
+    sqlite3_column_double_t sqlite3_column_double_fn = nullptr;
     sqlite3_reset_t sqlite3_reset_fn = nullptr;
     sqlite3_clear_bindings_t sqlite3_clear_bindings_fn = nullptr;
     sqlite3_errmsg_t sqlite3_errmsg_fn = nullptr;

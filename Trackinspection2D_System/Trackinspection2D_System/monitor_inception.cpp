@@ -95,7 +95,57 @@ std::wstring get_exe_path_from_settings() {
     return DEFAULT_PATH;
 }
 
+int get_sleeper_time_from_settings() {
+    const int DEFAULT_sleepTime = 20;
+    const std::string SETTINGS_PATH = SETTING_PATH;
 
+    // 检查设置文件是否存在
+    if (!fs::exists(SETTINGS_PATH)) {
+        std::wcout << L"未找到设置文件: SETTING_PATH，将使用默认休眠时间20min" << std::endl;
+        return DEFAULT_sleepTime;
+    }
+    try {
+        std::ifstream file(SETTINGS_PATH);
+        if (!file.is_open()) {
+            std::wcout << L"无法打开设置文件，将使用默认休眠时间20min" << std::endl;
+            return DEFAULT_sleepTime;
+        }
+
+        std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        file.close();
+
+        // 使用正则表达式查找路径
+        std::regex pathPattern(R"(name\s*=\s*\"Gazer_Sleep_TIME\"\s+type\s*=\s*\"int\"\s+value\s*=\s*\"(.*?)\")");
+        std::smatch match;
+        if (std::regex_search(content, match, pathPattern) && match.size() > 1) {
+            // 将提取的休眠时间转换为整数
+            int sleepTime = std::stoi(match.str(1));
+
+            // 检查提取的时间是否有效
+            if (sleepTime > 0) {
+                std::wcout << L"加载休眠时间成功: " << sleepTime << L" 分钟" << std::endl;
+                return sleepTime;
+            }
+            else {
+                std::wcout << L"设置文件中的休眠时间无效，将使用默认休眠时间" << std::endl;
+            }
+        }
+        else {
+            std::wcout << L"在设置文件中未找到TARGET_EXE_PATH标签，将使用默认路径" << std::endl;
+            return DEFAULT_sleepTime;
+        }
+
+    }
+    catch (const std::exception& e) {
+        // 使用 MultiByteToWideChar 替代 std::wstring_convert
+        int size_needed = MultiByteToWideChar(CP_UTF8, 0, e.what(), -1, NULL, 0);
+        std::wstring errorMessage(size_needed, 0);
+        MultiByteToWideChar(CP_UTF8, 0, e.what(), -1, &errorMessage[0], size_needed);
+
+        std::wcout << L"读取设置文件时出错: " << errorMessage << L"，将使用默认休眠时间" << std::endl;
+        return DEFAULT_sleepTime;
+    }
+}
 bool is_process_running(const std::wstring& exe_name) {
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnapshot == INVALID_HANDLE_VALUE) return false;
@@ -133,6 +183,7 @@ int main() {
 
     const std::wstring TARGET_EXE = L"Inception_main.exe";
     const std::wstring TARGET_PATH = get_exe_path_from_settings();
+    const int sleeperTime = get_sleeper_time_from_settings();
 
 
     // 路径存在性校验
@@ -154,7 +205,7 @@ int main() {
                 std::wcout << TARGET_EXE << L" 正在运行中。\r" << std::endl;
                 std::wcout << TARGET_EXE << L" is running.\r" << std::endl;
             }
-            std::this_thread::sleep_for(std::chrono::minutes(1));
+            std::this_thread::sleep_for(std::chrono::minutes(sleeperTime));
         }
     }
     return 0;

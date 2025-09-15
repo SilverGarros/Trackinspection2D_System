@@ -4,7 +4,7 @@
 #include "pch.h"
 #include "framework.h"
 #include "InceptionDLL.h"
-#include "InceptionUtils.h"
+#include "InceptionUtilsForNB.h"
 
 #include <algorithm>
 #include <sstream>
@@ -836,10 +836,10 @@ INCEPTIONDLL_API std::string YOLO12Infer::predict(const std::string& image_path,
             // 确定相机类型 (右相机 -> R, 左相机 -> L)
             std::string camera_type = "U"; // 默认为未知类型
             std::string camera_folder = p.parent_path().filename().string();
-            if (camera_folder == "右相机_railhead_stretch") {
+            if (camera_folder == "IMGR_railhead_stretch") {
                 camera_type = "R";
             }
-            else if (camera_folder == "左相机_railhead_stretch") {
+            else if (camera_folder == "IMGL_railhead_stretch") {
                 camera_type = "L";
             }
 

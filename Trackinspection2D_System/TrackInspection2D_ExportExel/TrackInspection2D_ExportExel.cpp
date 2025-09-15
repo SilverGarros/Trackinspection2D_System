@@ -238,7 +238,7 @@ void insert_image_into_worksheet(worksheet& ws, const fs::path& image_path, int 
 
         //// 为每个图片生成唯一的文件名
         //std::string output_filename = "defect_" + std::to_string(row) + "_" +
-        //    fs::path(image_path).filename().string();
+        //    fs::path(image_path).filename()string();
         // 使用纯ASCII字符创建图片文件名
         std::string output_filename = "img_" + std::to_string(row) + "_" +
             std::to_string(static_cast<unsigned int>(std::hash<std::string>{}(image_path.filename().string()) % 1000000)) + ".jpg";

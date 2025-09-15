@@ -10,31 +10,65 @@
 #include <filesystem>
 #include <fstream>
 #include <regex>
+#include <sstream>
+#include <sstream>
+#include <vector>
 #include <codecvt>
 #include <locale>
 using namespace std;
 namespace fs = std::filesystem;
 string SETTING_PATH = "C:\\DataBase2D\\setting.xml";
 
-
-// 检查当前时间是否在允许的时间范围内
-bool is_within_allowed_time() {
-    time_t now = time(nullptr);
-    tm localTime;
-    localtime_s(&localTime, &now);
-
-    int hour = localTime.tm_hour;
-    int minute = localTime.tm_min;
-
-    // 9:00-17:30 和 20:30-5:00 的时间段
-    if ((hour > 9 || (hour == 9 && minute >= 0)) && (hour < 17 || (hour == 17 && minute <= 30))) {
-        return true;
+// 从字符串解析时间（格式：HH:MM）
+std::pair<int, int> parse_time(const std::string& timeStr) {
+    size_t colonPos = timeStr.find(':');
+    if (colonPos == std::string::npos) {
+        return { -1, -1 }; // 无效格式
     }
-    if ((hour > 20 || (hour == 20 && minute >= 30)) || (hour < 5 || (hour == 5 && minute <= 0))) {
-        return true;
+
+    try {
+        int hour = std::stoi(timeStr.substr(0, colonPos));
+        int minute = std::stoi(timeStr.substr(colonPos + 1));
+        return { hour, minute };
     }
-    return false;
+    catch (...) {
+        return { -1, -1 }; // 转换失败
+    }
 }
+// 获取时间范围配置
+std::vector<std::pair<std::string, std::string>> get_time_ranges_from_settings() {
+    const std::string SETTINGS_PATH = SETTING_PATH;
+    std::vector<std::pair<std::string, std::string>> timeRanges;
+
+    try {
+        if (fs::exists(SETTINGS_PATH)) {
+            std::ifstream file(SETTINGS_PATH);
+            if (file.is_open()) {
+                std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+                file.close();
+
+                std::regex timePattern(R"(name\s*=\s*\"Gazer_TIME_RANGE_(\d+)\"\s+type\s*=\s*\"string\"\s+value\s*=\s*\"(\d{1,2}:\d{2})-(\d{1,2}:\d{2})\")");
+                std::smatch match;
+
+                auto contentBegin = content.cbegin();
+                auto contentEnd = content.cend();
+
+                while (std::regex_search(contentBegin, contentEnd, match, timePattern)) {
+                    if (match.size() > 3) {
+                        timeRanges.push_back({ match.str(2), match.str(3) });
+                    }
+                    contentBegin = match.suffix().first;
+                }
+            }
+        }
+    }
+    catch (const std::exception& e) {
+        std::wcerr << L"读取时间范围配置时出错: " << e.what() << std::endl;
+    }
+
+    return timeRanges;
+}
+
 // 从setting.xml文件获取可执行文件路径
 std::wstring get_exe_path_from_settings() {
     const std::wstring DEFAULT_PATH = L"C:\\LuHang_System\\Trackinspection2D_System\\Inception_main.exe";
@@ -146,6 +180,101 @@ int get_sleeper_time_from_settings() {
         return DEFAULT_sleepTime;
     }
 }
+
+void print_time_range_info(auto timeRanges) {
+    if (timeRanges.empty()) {
+        std::wcout << L"未找到时间范围配置，使用默认值 / No time range configuration found, using default values" << std::endl;
+        timeRanges = { {"10:15", "16:45"}, {"21:15", "05:45"} };
+    }
+
+    std::wcout << L"\n=== 可用时间段信息 / Available Time Ranges ===" << std::endl;
+    std::wcout << L"总共配置了 " << timeRanges.size() << L" 个时间段 / Total configured time ranges: " << timeRanges.size() << std::endl;
+
+    for (size_t i = 0; i < timeRanges.size(); ++i) {
+        auto [startHour, startMinute] = parse_time(timeRanges[i].first);
+        auto [endHour, endMinute] = parse_time(timeRanges[i].second);
+
+        std::wcout << L"时间段 " << (i + 1) << L" / Time Range " << (i + 1) << L": "
+            << std::setw(2) << std::setfill(L'0') << startHour << L":"
+            << std::setw(2) << std::setfill(L'0') << startMinute << L" - "
+            << std::setw(2) << std::setfill(L'0') << endHour << L":"
+            << std::setw(2) << std::setfill(L'0') << endMinute;
+
+        if (endHour < startHour || (endHour == startHour && endMinute < startMinute)) {
+            std::wcout << L" (跨越午夜 / Crosses midnight)";
+        }
+        std::wcout << std::endl;
+    }
+
+    // 获取当前时间
+    time_t now = time(nullptr);
+    tm localTime;
+    localtime_s(&localTime, &now);
+
+    std::wcout << L"当前系统时间 / Current system time: "
+        << std::setw(2) << std::setfill(L'0') << localTime.tm_hour << L":"
+        << std::setw(2) << std::setfill(L'0') << localTime.tm_min << L":"
+        << std::setw(2) << std::setfill(L'0') << localTime.tm_sec << std::endl;
+
+    std::wcout << L"==========================================\n" << std::endl;
+}
+// 检查当前时间是否在允许的时间范围内
+bool is_within_allowed_time(bool print_time_range_info_or_not) {
+    const std::string SETTINGS_PATH = SETTING_PATH;
+
+    // 默认时间范围（当配置文件读取失败时使用）
+    std::vector<std::pair<std::string, std::string>> defaultTimeRanges = {
+        {"10:15", "16:45"},
+        {"22:15", "05:45"}
+    };
+
+    std::vector<std::pair<std::string, std::string>> timeRanges = get_time_ranges_from_settings();
+
+
+    // 如果没有成功读取到时间范围，使用默认值
+    if (timeRanges.empty()) {
+        timeRanges = defaultTimeRanges;
+    }
+    if (print_time_range_info_or_not) {
+        print_time_range_info(timeRanges);
+    }
+    // 获取当前时间
+    time_t now = time(nullptr);
+    tm localTime;
+    localtime_s(&localTime, &now);
+
+    int currentHour = localTime.tm_hour;
+    int currentMinute = localTime.tm_min;
+
+    // 检查当前时间是否在任何允许的时间范围内
+    for (const auto& range : timeRanges) {
+        auto [startHour, startMinute] = parse_time(range.first);
+        auto [endHour, endMinute] = parse_time(range.second);
+
+        if (startHour == -1 || endHour == -1) {
+            continue; // 跳过无效的时间范围
+        }
+
+        // 处理跨越午夜的时间范围
+        if (endHour < startHour || (endHour == startHour && endMinute < startMinute)) {
+            // 时间范围跨越午夜（例如 21:15-05:45）
+            if ((currentHour > startHour || (currentHour == startHour && currentMinute >= startMinute)) ||
+                (currentHour < endHour || (currentHour == endHour && currentMinute <= endMinute))) {
+                return true;
+            }
+        }
+        else {
+            // 正常时间范围（不跨越午夜）
+            if ((currentHour > startHour || (currentHour == startHour && currentMinute >= startMinute)) &&
+                (currentHour < endHour || (currentHour == endHour && currentMinute <= endMinute))) {
+                return true;
+            }
+        }
+    }
+
+    return false;
+}
+
 bool is_process_running(const std::wstring& exe_name) {
     HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
     if (hSnapshot == INVALID_HANDLE_VALUE) return false;
@@ -192,10 +321,11 @@ int main() {
         std::wcerr << L"Error: Target executable path does not exist. Please contact the developer." << std::endl;
         return 1;
     }
-    std::wcout << L"2D 检测程式监视进程启动中" << std::endl;
+    std::wcout << L"2D 检测程式监视进程已启动" << std::endl;
     std::wcout << L"2D Detecting Processes Monitoring Processes Being Started..." << std::endl;
+    is_within_allowed_time(true);
     while (true) {
-        if (is_within_allowed_time()) {
+        if (is_within_allowed_time(false)) {
             if (!is_process_running(TARGET_EXE)) {
                 std::wcout << L"未检测到 " << TARGET_EXE << L" 进程，正在启动中..." << std::endl;
                 std::wcout << L"Process " << TARGET_EXE << L" not detected, starting..." << std::endl;

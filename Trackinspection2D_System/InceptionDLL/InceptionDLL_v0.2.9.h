@@ -23,15 +23,23 @@ struct DefectResult {
     float X = -1, Y = -1, H = -1, W = -1, Confidence = -1, Area = -1, PointsArea = -1;
     std::string Points;
 };
+struct DefectResult_with_position {
+    std::string DefectType;
+    std::string Camera;
+    std::string ImageName;
 
+    float X = -1, Y = -1, H = -1, W = -1, Confidence = -1, Area = -1, PointsArea = -1;
+    std::string Points;
+    float Position;
+};
 namespace InceptionDLL {
     extern const std::unordered_map<int, std::string> classes_lable_map;
     extern const std::vector<std::string> CLASS_NAMES;
     extern const std::map<std::string, cv::Scalar> CLASS_COLORS;
 }
-
 struct DetectionResult {
     std::string class_name;
+    int id = 0;
     cv::Rect bbox;
     float confidence;
     int area;
@@ -43,7 +51,6 @@ extern const std::vector<std::string> CLASS_NAMES;
 extern const std::map<std::string, cv::Scalar> CLASS_COLORS;
 
 INCEPTIONDLL_API std::string detection_results_to_string(const std::vector<DetectionResult>& results);
-
 class INCEPTIONDLL_API YOLO12Infer {
 public:
     YOLO12Infer(const std::string& onnx_model,
@@ -55,12 +62,16 @@ public:
     std::vector<DetectionResult> infer(const std::string& image_path);
     std::string predict(const std::string& image_path, bool visual = false, bool show_score = true, bool show_class = true, bool save_or_not = false);
     void draw_box(cv::Mat& img, const DetectionResult& res, bool show_score, bool show_class);
+    void draw_box(cv::Mat& img, DetectionResult& res, bool show_score, bool show_class,
+        std::map<std::string, int>& class_counter, bool save_single_defects,
+        const std::string& original_image_path);
 
 private:
     cv::Mat letterbox(const cv::Mat& img, float& h_ratio, float& w_ratio);
     std::vector<float> preprocess(const std::string& image_path, cv::Mat& original_img, float& h_ratio, float& w_ratio);
-    std::vector<DetectionResult> postprocess(const std::vector<float>& output, int rows, int cols, float h_ratio, float w_ratio, const cv::Mat& original_img);
-
+    std::vector<DetectionResult> postprocess(const std::vector<float>& output, int rows, int cols, float h_ratio, float w_ratio, const cv::Mat& original_img, const std::string& image_path);
+    void save_single_defect_image(const cv::Mat& img, const DetectionResult& res,
+        const std::string& original_path, const std::string& label_with_id);
     cv::Size input_image_size_;
     int input_width_;
     int input_height_;

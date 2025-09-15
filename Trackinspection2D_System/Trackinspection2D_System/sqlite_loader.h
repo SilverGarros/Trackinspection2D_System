@@ -2,7 +2,18 @@
 #include <Windows.h>
 #include <string>
 #include <functional>
-
+#ifndef SQLITE_OK
+#define SQLITE_OK 0
+#endif
+#ifndef SQLITE_ROW
+#define SQLITE_ROW 100
+#endif
+#ifndef SQLITE_DONE
+#define SQLITE_DONE 101
+#endif
+#ifndef SQLITE_NULL
+#define SQLITE_NULL 5
+#endif
 // 简化的SQLite结构和类型定义
 typedef struct sqlite3 sqlite3;
 typedef struct sqlite3_stmt sqlite3_stmt;
@@ -14,6 +25,7 @@ typedef int (*sqlite3_callback)(void*, int, char**, char**);
 
 // 函数指针类型定义
 typedef int (*sqlite3_open_t)(const char*, sqlite3**);
+typedef int (*sqlite3_open16_t)(const void*, sqlite3**);
 typedef int (*sqlite3_close_t)(sqlite3*);
 typedef int (*sqlite3_exec_t)(sqlite3*, const char*, sqlite3_callback, void*, char**);
 typedef int (*sqlite3_prepare_v2_t)(sqlite3*, const char*, int, sqlite3_stmt**, const char**);
@@ -23,6 +35,7 @@ typedef int (*sqlite3_bind_text_t)(sqlite3_stmt*, int, const char*, int, void(*)
 typedef const unsigned char* (*sqlite3_column_text_t)(sqlite3_stmt*, int);
 typedef int (*sqlite3_column_int_t)(sqlite3_stmt*, int);
 typedef int (*sqlite3_column_type_t)(sqlite3_stmt*, int);
+typedef double (*sqlite3_column_double_t)(sqlite3_stmt*, int);
 typedef int (*sqlite3_reset_t)(sqlite3_stmt*);
 typedef int (*sqlite3_clear_bindings_t)(sqlite3_stmt*);
 typedef const char* (*sqlite3_errmsg_t)(sqlite3*);
@@ -39,6 +52,7 @@ public:
         if (hModule) {
             // 加载必要的函数
             sqlite3_open_fn = (sqlite3_open_t)GetProcAddress(hModule, "sqlite3_open");
+            sqlite3_open16_fn = (sqlite3_open16_t)GetProcAddress(hModule, "sqlite3_open16");
             sqlite3_close_fn = (sqlite3_close_t)GetProcAddress(hModule, "sqlite3_close");
             sqlite3_exec_fn = (sqlite3_exec_t)GetProcAddress(hModule, "sqlite3_exec");
             sqlite3_prepare_v2_fn = (sqlite3_prepare_v2_t)GetProcAddress(hModule, "sqlite3_prepare_v2");
@@ -48,6 +62,7 @@ public:
             sqlite3_column_text_fn = (sqlite3_column_text_t)GetProcAddress(hModule, "sqlite3_column_text");
             sqlite3_column_int_fn = (sqlite3_column_int_t)GetProcAddress(hModule, "sqlite3_column_int");
             sqlite3_column_type_fn = (sqlite3_column_type_t)GetProcAddress(hModule, "sqlite3_column_type");
+            sqlite3_column_double_fn = (sqlite3_column_double_t)GetProcAddress(hModule, "sqlite3_column_double");
             sqlite3_reset_fn = (sqlite3_reset_t)GetProcAddress(hModule, "sqlite3_reset");
             sqlite3_clear_bindings_fn = (sqlite3_clear_bindings_t)GetProcAddress(hModule, "sqlite3_clear_bindings");
             sqlite3_errmsg_fn = (sqlite3_errmsg_t)GetProcAddress(hModule, "sqlite3_errmsg");
@@ -68,6 +83,7 @@ public:
 
     // 公开函数接口
     sqlite3_open_t sqlite3_open_fn = nullptr;
+    sqlite3_open16_t sqlite3_open16_fn = nullptr;
     sqlite3_close_t sqlite3_close_fn = nullptr;
     sqlite3_exec_t sqlite3_exec_fn = nullptr;
     sqlite3_prepare_v2_t sqlite3_prepare_v2_fn = nullptr;
@@ -77,6 +93,7 @@ public:
     sqlite3_column_text_t sqlite3_column_text_fn = nullptr;
     sqlite3_column_int_t sqlite3_column_int_fn = nullptr;
     sqlite3_column_type_t sqlite3_column_type_fn = nullptr;
+    sqlite3_column_double_t sqlite3_column_double_fn = nullptr;
     sqlite3_reset_t sqlite3_reset_fn = nullptr;
     sqlite3_clear_bindings_t sqlite3_clear_bindings_fn = nullptr;
     sqlite3_errmsg_t sqlite3_errmsg_fn = nullptr;

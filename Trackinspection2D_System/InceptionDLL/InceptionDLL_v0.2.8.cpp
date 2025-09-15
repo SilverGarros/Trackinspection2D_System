@@ -3,9 +3,8 @@
 
 #include "pch.h"
 #include "framework.h"
-#include "InceptionDLL.h"
-#include "InceptionUtils.h"
-
+#include "InceptionDLL_v0.2.8.h"
+#include "InceptionUtils_v0.2.8.h"
 #include <algorithm>
 #include <sstream>
 #include <filesystem>
@@ -13,11 +12,37 @@
 #include <opencv2/opencv.hpp>
 
 bool TestModel_Flag = false;
-bool Data_Collector = true;
+bool Data_Collector = false;
 
 namespace fs = std::filesystem;
 using namespace InceptionUtils;
 
+
+INCEPTIONDLL_API cv::Mat selectThresholdAdaptive(const cv::Mat& gray_inv) {
+    cv::Scalar mean, stddev;
+    cv::meanStdDev(gray_inv, mean, stddev);
+
+    double img_mean = mean[0];
+    double img_std = stddev[0];
+
+    cv::Mat result;
+
+    // 根据图像特性选择最佳阈值方法
+    if (img_std > 200) { // 高对比度，OTSU效果好
+        cv::threshold(gray_inv, result, 0, 255, cv::THRESH_BINARY + cv::THRESH_OTSU);
+    }
+    else if (img_std < 20) { // 低对比度，使用Triangle
+        cv::threshold(gray_inv, result, 0, 255, cv::THRESH_BINARY + cv::THRESH_TRIANGLE);
+    }
+    else { // 中等对比度，尝试组合
+        cv::Mat otsu, triangle;
+        cv::threshold(gray_inv, otsu, 0, 255, cv::THRESH_BINARY + cv::THRESH_OTSU);
+        cv::threshold(gray_inv, triangle, 0, 255, cv::THRESH_BINARY + cv::THRESH_TRIANGLE);
+        cv::bitwise_and(otsu, triangle, result);
+    }
+
+    return result;
+}
 INCEPTIONDLL_API std::string detection_results_to_string(const std::vector<DetectionResult>& results) {
     nlohmann::json arr = nlohmann::json::array();
     for (const auto& res : results) {
@@ -38,12 +63,11 @@ INCEPTIONDLL_API std::string detection_results_to_string(const std::vector<Detec
             obj["contours"] = contours_json;
             obj["area_contour"] = res.area_contour;
         }
-        
+
         arr.push_back(obj);
     }
     return arr.dump();
 }
-
 namespace InceptionDLL {
     const std::unordered_map<int, std::string> classes_lable_map = {
         {0, "YC"},
@@ -55,6 +79,17 @@ namespace InceptionDLL {
         {6, "GF"},
         {7, "GD"}
     };
+    std::unordered_map<std::string, cv::Mat> chinese_labels;
+    // 预先创建中文标签图片
+    void createChineseLabels() {
+        cv::Mat dk_label = cv::Mat::zeros(20, 40, CV_8UC3);
+        cv::putText(dk_label, "掉块", cv::Point(5, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255));
+        chinese_labels["DK"] = dk_label;
+
+        cv::Mat cs_label = cv::Mat::zeros(20, 40, CV_8UC3);
+        cv::putText(cs_label, "擦伤", cv::Point(5, 15), cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255));
+        chinese_labels["CS"] = cs_label;
+    }
     const std::vector<std::string> CLASS_NAMES = {
         // "DK_A", "DK_B", "DK_C", "CS_A", "CS_B", "CS_C"
         "DK_A", "DK_B", "DK_C", "CS_A", "CS_B", "CS_C","WZ","GF","HF"
@@ -73,6 +108,18 @@ namespace InceptionDLL {
     };
 }
 namespace InceptionDLL {
+
+
+    INCEPTIONDLL_API cv::Mat CropRailhead(
+        const std::string& img_path, int crop_threshold, int crop_kernel_size, int crop_wide, bool center_limit, int limit_area)
+    {
+        cv::Mat img = imread_unicode(img_path, cv::IMREAD_COLOR);
+        if (img.empty()) {
+            std::cerr << "CropRailhead: 图像读取失败: " << img_path << std::endl;
+            return cv::Mat();
+        }
+        return RailheadCropHighlightCenterArea(img, crop_threshold, crop_kernel_size, crop_wide, center_limit,limit_area);
+    }
     INCEPTIONDLL_API cv::Mat RailheadCropHighlightCenterArea(
         const cv::Mat& img, int threshold, int kernel_size, int crop_wide, bool center_limit = true, int limit_area = 50)
     {
@@ -102,7 +149,7 @@ namespace InceptionDLL {
                 });
             cv::Rect bbox = cv::boundingRect(*largest);
             crod_m = bbox.x + bbox.width / 2;
-        if (center_limit) {
+            if (center_limit) {
                 if (std::abs(crod_m - img_center) > limit_area)
                     crod_m = img_center;
             }
@@ -116,18 +163,6 @@ namespace InceptionDLL {
         }
         return img(cv::Rect(x1, y1, x2 - x1, y2 - y1)).clone();
     }
-
-    INCEPTIONDLL_API cv::Mat CropRailhead(
-        const std::string& img_path, int crop_threshold, int crop_kernel_size, int crop_wide, bool center_limit, int limit_area)
-    {
-        cv::Mat img = imread_unicode(img_path, cv::IMREAD_COLOR);
-        if (img.empty()) {
-            std::cerr << "CropRailhead: 图像读取失败: " << img_path << std::endl;
-            return cv::Mat();
-        }
-        return RailheadCropHighlightCenterArea(img, crop_threshold, crop_kernel_size, crop_wide, center_limit,limit_area);
-    }
-
     INCEPTIONDLL_API std::vector<std::string> StretchAndSplit(
         const cv::Mat& cropped,
         const std::string& cropped_name,
@@ -201,19 +236,33 @@ namespace InceptionDLL {
             int max_index = 5;
             float max_value = output_data[5];
             for (size_t i = 0; i < output_count; i++) {
-                // 剔除 i=2BM i=3 HF 和 i=7 GD 的影响
-                if (i==2 || i == 3 || i == 7) {
+
+                // 剔除 ~i=2BM~ i=3 HF和i=6GF ~i=7GD~ 的影响
+                if (i == 3 || i == 6) {
                     continue;
                 }
                 if (output_data[i] > max_value) {
                     max_value = output_data[i];
                     max_index = static_cast<int>(i);
+                    /*        
+                    {0, "YC"},
+                    {1, "DK"},
+                    {2, "BM"},
+                    {3, "HF"},
+                    {4, "CS"},
+                    {5, "ZC"},
+                    {6, "GF"},
+                    {7, "GD"}
+                    */
                 }
             }
             // 添加置信度过滤逻辑
-            float confidence_threshold = 0.7; // 根据实际情况调整
+            float confidence_threshold = 0.3; // 根据实际情况调整
+            if (max_index == 2) {
+                confidence_threshold = 0.2; // BM类别的阈值更低
+            }
             if (max_value < confidence_threshold) {
-                return "ZC"; // 或其他默认类别
+                return "ZC";
             }
             auto it = InceptionDLL::classes_lable_map.find(max_index);
             return (it != InceptionDLL::classes_lable_map.end()) ? it->second : "111 Unknown";
@@ -273,7 +322,7 @@ namespace InceptionDLL {
 
             //======检查是否至少包含"DK_A", "DK_B", "DK_C", "CS_A", "CS_B", "CS_C" 或 "WZ" 这几类，如果不包含则返回 "['class_name': 'ZC']"========
             if (det_results.empty()) {
-                return "['class_name': 'ZC']";
+                return R"([{"class_name":"ZC"}])";
             }
 
             // 解析 JSON 数组形式的检测结果
@@ -290,12 +339,12 @@ namespace InceptionDLL {
                     }
                 }
                 if (!containsDesired) {
-                    return "['class_name': 'ZC']";
+                    return R"([{"class_name":"ZC"}])";
                 }
             }
             catch (...) {
                 // 解析失败也返回默认值
-                return "['class_name': 'ZC']";
+                return R"([{"class_name":"ZC"}])";
             }
 
             return det_results;
@@ -305,11 +354,11 @@ namespace InceptionDLL {
         }
         catch (const std::exception& e) {
             std::cerr << "DetectImage 异常: " << e.what() << std::endl;
-            return "['class_name': 'ZC']";
+            return R"([{"class_name":"ZC"}])";
         }
         catch (...) {
             std::cerr << "DetectImage 未知异常" << std::endl;
-            return "['class_name': 'ZC']";
+            return R"([{"class_name":"ZC"}])";
         }
     }
 
@@ -494,7 +543,7 @@ INCEPTIONDLL_API std::vector<float> YOLO12Infer::preprocess(const std::string& i
 }
 
 INCEPTIONDLL_API std::vector<DetectionResult> YOLO12Infer::postprocess(const std::vector<float>& output, int rows, int cols,
-    float h_ratio, float w_ratio, const cv::Mat& original_img) {
+    float h_ratio, float w_ratio, const cv::Mat& original_img,const std::string& image_path) {
     std::vector<std::vector<float>> boxes;
     std::vector<float> scores;
     std::vector<int> class_ids;
@@ -565,9 +614,7 @@ INCEPTIONDLL_API std::vector<DetectionResult> YOLO12Infer::postprocess(const std
             }
 
 
-
         }
-
 
     // NMS
     std::vector<cv::Rect> cv_boxes;
@@ -577,6 +624,7 @@ INCEPTIONDLL_API std::vector<DetectionResult> YOLO12Infer::postprocess(const std
     std::vector<int> indices;
     cv::dnn::NMSBoxes(cv_boxes, scores, confidence_thres_, iou_thres_, indices);
     
+    int id = 0;
     // 创建结果对象
     for (int idx : indices) {
         DetectionResult res;
@@ -599,57 +647,181 @@ INCEPTIONDLL_API std::vector<DetectionResult> YOLO12Infer::postprocess(const std
             std::cout << "bbox:" << res.bbox << std::endl;
         }
         // DK类处理
+
         if (res.class_name.find("DK") != std::string::npos) {
-            if (TestModel_Flag) {
-                std::cout << "执行掉块类处理....." << std::endl;
+            try {
+                if (TestModel_Flag) {
+                    std::cout << "执行掉块类处理....." << std::endl;
+                }
+                // 裁剪检测区域
+                int x1 = std::max(res.bbox.x, 0);
+                int y1 = std::max(res.bbox.y, 0);
+                int x2 = std::min(res.bbox.x + res.bbox.width, original_img.cols);
+                int y2 = std::min(res.bbox.y + res.bbox.height, original_img.rows);
+                cv::Mat crop = original_img(cv::Rect(x1, y1, x2 - x1, y2 - y1)).clone();
+
+                // 存储中间处理图像
+                std::vector<cv::Mat> intermediate_imgs;
+                intermediate_imgs.push_back(crop.clone()); // 原始裁剪图像
+
+                // 图像处理
+                cv::Mat gray, gray_inv, binary;
+                if (crop.channels() == 3)
+                    cv::cvtColor(crop, gray, cv::COLOR_BGR2GRAY);
+                else
+                    gray = crop;
+                intermediate_imgs.push_back(gray.clone()); // 灰度图像
+                // 反色处理
+                cv::bitwise_not(gray, gray_inv);
+                intermediate_imgs.push_back(gray_inv.clone());
+
+                // 伽马校正
+                cv::Mat lut(1, 256, CV_8U);
+                uchar* p = lut.ptr();
+                float inv_gamma = 1.2;
+                for (int i = 0; i < 256; ++i) p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, inv_gamma) * 255.0);
+                cv::LUT(gray_inv, lut, gray_inv);
+                intermediate_imgs.push_back(gray_inv.clone()); // 伽马校正后
+
+                //int min_dim = std::min(gray_inv.rows, gray_inv.cols); // 57
+                //int blockSize = std::max(3, min_dim / 15); // 57/15≈3.8→3
+                //if (blockSize % 2 == 0) blockSize++; // 确保奇数→3
+
+                //// 自适应阈值二值化
+                //cv::adaptiveThreshold(gray_inv, binary, 255, cv::ADAPTIVE_THRESH_GAUSSIAN_C, cv::THRESH_BINARY, blockSize, -5);
+                //double thresh = cv::threshold(gray_inv, binary, 0, 255, cv::THRESH_BINARY + cv::THRESH_OTSU);
+                binary = selectThresholdAdaptive(gray_inv);
+                intermediate_imgs.push_back(binary.clone()); // 二值化结果
+
+                // 闭运算
+                cv::morphologyEx(binary, binary, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
+                intermediate_imgs.push_back(binary.clone());
+
+                // 轮廓提取
+                std::vector<std::vector<cv::Point>> contours;
+                cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
+
+                // 剔除面积小于等于42的轮廓，保留面积大于42的轮廓
+                contours.erase(std::remove_if(contours.begin(), contours.end(),
+                    [](const std::vector<cv::Point>& contour) {
+                        return cv::contourArea(contour) <= 42;  // 剔除条件：面积<=42
+                    }), contours.end());
+                //// 创建新向量只保留面积大于42的轮廓
+                //std::vector<std::vector<cv::Point>> filtered_contours;
+                //std::copy_if(contours.begin(), contours.end(), std::back_inserter(filtered_contours),
+                //    [](const std::vector<cv::Point>& contour) {
+                //        return cv::contourArea(contour) > 42;  // 保留条件：面积>42
+                //    });
+                //contours = std::move(filtered_contours);  // 替换原轮廓向量
+                cv::Mat contour_img_transparent = cv::Mat::zeros(crop.size(), CV_8UC3);
+                for (const auto& contour : contours) {
+                    std::vector<std::vector<cv::Point>> single_contour = { contour };
+                    cv::drawContours(contour_img_transparent, single_contour, -1,
+                        cv::Scalar(0, 255, 0), 1, cv::LINE_AA); // 使用抗锯齿
+                }
+
+                // 合并到原图
+                cv::Mat contour_img;
+                if (crop.channels() == 3) {
+                    contour_img = crop.clone(); // 已经是 BGR
+                }
+                else if (crop.channels() == 1) {
+                    cv::cvtColor(crop, contour_img, cv::COLOR_GRAY2BGR);
+                }
+                else if (crop.channels() == 4) {
+                    cv::cvtColor(crop, contour_img, cv::COLOR_BGRA2BGR);
+                }
+                else {
+                    throw std::runtime_error("Unsupported channel count in crop");
+                }
+                cv::addWeighted(contour_img, 1.0, contour_img_transparent, 0.5, 0, contour_img);
+                intermediate_imgs.push_back(contour_img); // 轮廓图像
+
+                // 计算轮廓总面积
+                double area_contour = 0.0;
+                for (const auto& cnt : contours) {
+                    double a = cv::contourArea(cnt);
+                    if (a > 20) area_contour += a; // 过滤小面积
+                }
+
+                // 确保轮廓总面积不超过原区域面积
+                if (area_contour > res.area) area_contour = res.area;
+                res.contours = contours;
+                res.area_contour = static_cast<float>(area_contour);
+
+                // 横向拼接所有中间图像
+                //if (!intermediate_imgs.empty()) {
+                if(true){
+                    int total_width = 0;
+                    int max_height = 0;
+
+                    // 计算总宽度和最大高度
+                    for (const auto& img : intermediate_imgs) {
+                        total_width += img.cols;
+                        if (img.rows > max_height) {
+                            max_height = img.rows;
+                        }
+                    }
+
+                    // 创建拼接画布
+                    cv::Mat combined_img(max_height, total_width, intermediate_imgs[0].type(), cv::Scalar(0));
+
+                    // 拼接图像
+                    int current_x = 0;
+                    for (const auto& img : intermediate_imgs) {
+                        cv::Mat roi = combined_img(cv::Rect(current_x, 0, img.cols, img.rows));
+
+                        // 如果是单通道图像，转换为三通道显示
+                        if (img.channels() == 1) {
+                            cv::cvtColor(img, roi, cv::COLOR_GRAY2BGR);
+                        }
+                        else {
+                            img.copyTo(roi);
+                        }
+
+                        current_x += img.cols;
+                    }
+                    //std::cout << "\t拼接图像已生成: " << std::endl;
+                    // 保存拼接图像
+                    size_t last_backslash = image_path.find_last_of('\\');
+                    size_t last_dot = image_path.find_last_of('.');
+
+                    if (last_backslash != std::string::npos) {
+                        // 构建 DK_process 目录和完整保存路径
+                        fs::path src_path(image_path);
+                        //std::cout << "src_path" << src_path << std::endl;
+                        fs::path parent_dir = src_path.parent_path();
+                        //std::cout << "parent_dir" << parent_dir << std::endl;
+                        fs::path dk_process_dir = parent_dir / "DK_process";
+                        //std::cout << "dk_process_dir" << dk_process_dir << std::endl;
+                        std::string filename = src_path.stem().string(); // 只取文件名，不带扩展名
+                        std::string extension = src_path.extension().string(); // 带点的扩展名
+                        id++;
+                        fs::path save_path = dk_process_dir / (filename + "_process" + std::to_string(id) + "." + extension);
+
+                        // 递归创建所有父目录
+                        fs::create_directories(save_path.parent_path());
+
+                        if (combined_img.empty()) {
+                            std::cerr << "拼接图像为空，无法保存！" << std::endl;
+                        }
+                        // 保存到 DK_process 路径
+                        bool success = cv::imwrite(save_path.string(), combined_img);
+                        //if (success) {
+                        //    std::cout << "图像已保存到: " << save_path << std::endl;
+                        //}
+                        //else {
+                        //    std::cerr << "保存失败: " << save_path << std::endl;
+                        //}
+                    }
+                }
+
             }
-
-            // 裁剪检测区域
-            int x1 = std::max(res.bbox.x, 0);
-            int y1 = std::max(res.bbox.y, 0);
-            int x2 = std::min(res.bbox.x + res.bbox.width, original_img.cols);
-            int y2 = std::min(res.bbox.y + res.bbox.height, original_img.rows);
-            cv::Mat crop = original_img(cv::Rect(x1, y1, x2 - x1, y2 - y1)).clone();
-
-            // 图像处理
-            cv::Mat gray, gray_inv, binary;
-            if (crop.channels() == 3)
-                cv::cvtColor(crop, gray, cv::COLOR_BGR2GRAY);
-            else
-                gray = crop;
-
-
-            // 伽马校正
-            cv::Mat lut(1, 256, CV_8U);
-            uchar* p = lut.ptr();
-            float inv_gamma = 1.0f / 2.0f;
-            for (int i = 0; i < 256; ++i) p[i] = cv::saturate_cast<uchar>(pow(i / 255.0, inv_gamma) * 255.0);
-            cv::LUT(gray, lut, gray);
-
-            // 反色处理
-            cv::bitwise_not(gray, gray_inv);
-
-            // 自适应阈值二值化
-            cv::adaptiveThreshold(gray_inv, binary, 255, cv::ADAPTIVE_THRESH_MEAN_C, cv::THRESH_BINARY, 15, -10);
-
-            // 闭运算
-            cv::morphologyEx(binary, binary, cv::MORPH_CLOSE, cv::getStructuringElement(cv::MORPH_RECT, cv::Size(3, 3)));
-
-            // 轮廓提取
-            std::vector<std::vector<cv::Point>> contours;
-            cv::findContours(binary, contours, cv::RETR_EXTERNAL, cv::CHAIN_APPROX_SIMPLE);
-
-            // 计算轮廓总面积
-            double area_contour = 0.0;
-            for (const auto& cnt : contours) {
-                double a = cv::contourArea(cnt);
-                if (a > 10) area_contour += a; // 过滤小面积
+            catch (const cv::Exception& e) {
+                std::cerr << "OpenCV 异常: " << e.what()
+                    << " 在文件: " << e.file
+                    << " 行: " << e.line << std::endl;
             }
-
-            // 确保轮廓总面积不超过原区域面积
-            if (area_contour > res.area) area_contour = res.area;
-            res.contours = contours;
-            res.area_contour = static_cast<float>(area_contour);
         }
 
         results.push_back(res);
@@ -718,7 +890,7 @@ INCEPTIONDLL_API std::vector<DetectionResult> YOLO12Infer::infer(const std::stri
     //    }
     //}
 
-    return postprocess(transposed_output, orig_cols, orig_rows, h_ratio, w_ratio, original_img);
+    return postprocess(transposed_output, orig_cols, orig_rows, h_ratio, w_ratio, original_img, image_path);
 }
 
 INCEPTIONDLL_API void YOLO12Infer::draw_box(cv::Mat& img, const DetectionResult& res, bool show_score, bool show_class) {
@@ -773,16 +945,30 @@ INCEPTIONDLL_API void YOLO12Infer::draw_box(cv::Mat& img, const DetectionResult&
         if (label_size.height < 2 * res.bbox.height) {
             cv::rectangle(img, cv::Rect(res.bbox.x - label_size.width, res.bbox.y, label_size.width - 5, label_size.height), color, -1);
             cv::putText(img, label, cv::Point(res.bbox.x - label_size.width + 3, res.bbox.y + 10), cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0, 0, 0), 1);
+            if (InceptionDLL::chinese_labels.find(res.class_name) != InceptionDLL::chinese_labels.end()) {
+                cv::Mat label_img = InceptionDLL::chinese_labels[res.class_name];
+                cv::Rect roi(res.bbox.x, res.bbox.y - label_img.rows, label_img.cols, label_img.rows);
+                label_img.copyTo(img(roi));
+            }
         }
         else {
             cv::rectangle(img, cv::Rect(res.bbox.x - label_size.width, res.bbox.y +label_size.height+ 40, label_size.width - 5, label_size.height), color, -1);
             cv::putText(img, label, cv::Point(res.bbox.x - label_size.width + 3, res.bbox.y + label_size.height + 50), cv::FONT_HERSHEY_SIMPLEX, 0.4, cv::Scalar(0, 0, 0), 1);
+            if (InceptionDLL::chinese_labels.find(res.class_name) != InceptionDLL::chinese_labels.end()) {
+                cv::Mat label_img = InceptionDLL::chinese_labels[res.class_name];
+                cv::Rect roi(res.bbox.x, res.bbox.y - label_img.rows, label_img.cols, label_img.rows);
+                label_img.copyTo(img(roi));
+            }
         }
     }
 
     // 画轮廓（红色）
     if (!res.contours.empty() && res.class_name.find("DK") != std::string::npos) {
         for (const auto& cnt : res.contours) {
+            double area = cv::contourArea(cnt);
+            if (area < 50.0) {
+                continue; // 跳过小轮廓
+            }
             std::vector<cv::Point> cnt_shifted;
             for (const auto& pt : cnt) {
                 cnt_shifted.emplace_back(pt.x + res.bbox.x, pt.y + res.bbox.y);
@@ -796,10 +982,10 @@ INCEPTIONDLL_API std::string YOLO12Infer::predict(const std::string& image_path,
     std::vector<DetectionResult> results = infer(image_path);
     cv::Mat img = InceptionUtils::imread_unicode(image_path, cv::IMREAD_COLOR);
 
-    // 过滤掉面积小于200的检测结果
+    // 过滤掉面积小于100的检测结果
     std::vector<DetectionResult> filtered_results;
     for (const auto& res : results) {
-        if (res.area > 200) {
+        if (res.area > 100) {
             filtered_results.push_back(res);
         }
         else if (TestModel_Flag) {
@@ -810,6 +996,8 @@ INCEPTIONDLL_API std::string YOLO12Infer::predict(const std::string& image_path,
     if (results.empty()) {
         return R"([{"class_name": "ZC"}])";
     }
+
+    //==== 数据搜集器，有需要再打开 =====//
     if (Data_Collector) {
 
         bool has_cs_c = false;

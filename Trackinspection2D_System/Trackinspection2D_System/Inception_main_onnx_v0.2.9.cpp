@@ -513,7 +513,19 @@ static void process_single_image(
 
     }
 }
+std::string GbkToUtf8(const std::string& gbkStr) {
+    int len = MultiByteToWideChar(CP_ACP, 0, gbkStr.c_str(), -1, nullptr, 0);
+    std::wstring wstr(len, L'\0');
+    MultiByteToWideChar(CP_ACP, 0, gbkStr.c_str(), -1, &wstr[0], len);
 
+    len = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    std::string utf8str(len, '\0');
+    WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), -1, &utf8str[0], len, nullptr, nullptr);
+
+    // 去掉最后的\0
+    if (!utf8str.empty() && utf8str.back() == '\0') utf8str.pop_back();
+    return utf8str;
+}
 bool is_valid_utf8(const std::string& str) {
     int c, i, ix, n, j;
     for (i = 0, ix = str.length(); i < ix; i++) {
@@ -1031,6 +1043,7 @@ int main(int argc, char* argv[]) {
         const std::string xml_path = "C:\\DataBase2D\\setting.xml";
         
         std::string img2D_path = XmlLoader::get_value_from_xml(xml_path, "2DDataSetPath", "D://2DImage");
+  
         std::string database_root = XmlLoader::get_value_from_xml(xml_path, "2DDataBasePath", "C://DataBase2D");
         std::string L_cam_name = XmlLoader::get_value_from_xml(xml_path, "L_cam_name", "左相机");
         std::string R_cam_name = XmlLoader::get_value_from_xml(xml_path, "R_cam_name", "右相机");

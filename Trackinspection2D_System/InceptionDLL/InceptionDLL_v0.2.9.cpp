@@ -19,6 +19,7 @@ bool Save_Single_Defects = true; // Add 0.2.9 按条缺陷标记保存控制器�
 namespace fs = std::filesystem;
 using namespace InceptionUtils;
 
+
 INCEPTIONDLL_API cv::Mat selectThresholdAdaptive(const cv::Mat& gray_inv) {
     cv::Scalar mean, stddev;
     cv::meanStdDev(gray_inv, mean, stddev);
@@ -110,6 +111,8 @@ namespace InceptionDLL {
     };
 }
 namespace InceptionDLL {
+
+
     INCEPTIONDLL_API cv::Mat CropRailhead(
         const std::string& img_path, int crop_threshold, int crop_kernel_size, int crop_wide, bool center_limit, int limit_area)
     {
@@ -1116,7 +1119,6 @@ INCEPTIONDLL_API std::string YOLO12Infer::predict(const std::string& image_path,
         return R"([{"class_name": "ZC"}])";
     }
 
-    //==== 内置数据搜集器，有需要再打开 =====//
     if (Data_Collector) {
 
         bool has_cs_c = false;
@@ -1201,3 +1203,5 @@ INCEPTIONDLL_API std::string YOLO12Infer::predict(const std::string& image_path,
 
     return detection_results_to_string(results);
 }
+
+
